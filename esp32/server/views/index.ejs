@@ -1,0 +1,168 @@
+<html data-bs-theme="light" lang="en" style>
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, shrink-to-fit=no" />
+    <title>ESSA</title>
+    <link rel="stylesheet" href="bootstrap/css/bootstrap.min.css" />
+</head>
+
+<body>
+<nav class="navbar navbar-expand-md bg-body">
+    <div class="container-fluid"><i class="fa fa-bolt" style="font-size: 41px;"></i><a class="navbar-brand" href="#">ESSA</a><button class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navcol-1"><span class="visually-hidden">Toggle navigation</span><span class="navbar-toggler-icon"></span></button></div>
+</nav>
+<div class="container">
+    <div class="row">
+        <div class="col-md-12">
+            <canvas id="canvas" width="800" height="600"></canvas>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-md-12"></div>
+    </div>
+</div>
+<footer class="text-center bg-dark">
+    <div class="container text-white py-4 py-lg-5">
+        <p class="text-muted mb-0"><span style="color: rgb(214, 214, 198);">&amp;copy; Pietruszewski Michał 2024</span></p>
+    </div>
+</footer>
+<script>
+    //1 impuls = 0.5 Wh
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    let impulse = 0;
+    let energySpeed = 0;  // Zużycie energii w Wh/s_n
+    let maxSeconds = 5; // Czas w sekundach, przez które dzieli się liczbę impulsów
+    let energyText = '0 Wh';
+    const maxEnergy = 3000;  // Ustal maksymalną wartość energii na 3000 Wh
+    const impulseToWh = 0.5;
+    ctx.font = '30px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const host = location.host;
+
+    let deltaImpulse = 0;
+    let secounds = 0;
+    let lastDeltaImpulse = 0;
+    let lastImpulse = 0;
+
+
+    function slerp(a, b, t) {
+        return a + (b - a) * t;
+    }
+    setInterval(() => {
+        // Symulacja zbierania danych z API
+        fetch('http://' + host + '/tick')
+            .then(response => response.json())
+            .then(data => {
+                if(secounds == 5){
+                lastDeltaImpulse = deltaImpulse;
+                lastImpulse = impulse;
+                }
+                deltaImpulse = data.impulse - lastImpulse;
+                impulse = data.impulse; 
+            });
+        draw();
+    }, 1000);
+
+    function draw() {
+
+        // Obliczanie zużycia energii
+
+        //Dokładność "prędkościomierza mocy" to 5s
+        //Jeżeli w ciągu tych 5s wystąpiło 5 impulsów to prędkość to 5 impulsów na 5s
+        //energia jest wygładzana, i w ciągu upływu 5s coraz większy udział w wartości ma wartośćć aktualna zamiast poprzedniej
+        energySpeed = slerp(energySpeed, (deltaImpulse * impulseToWh * maxSeconds) + (lastDeltaImpulse * impulseToWh / maxSeconds), 0.2);
+
+
+
+        // Wyczyszczenie canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Ustawienia rysowania tarczy miernika
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+        const radius = 200;
+
+        // Rysowanie tła (okrąg)
+        ctx.fillStyle = 'black';
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Rysowanie okręgu prędkościomierza (zewnętrzna tarcza)
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 10;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Rysowanie podziałek (wartości na tarczy)
+        const numTicks = 10;    // Liczba głównych podziałek na tarczy (od 0 do 10 co 1 Wh)
+
+        // Główne podziałki co 1 jednostkę (Wh), rozmieszczone od 120° do 540°
+        const startAngle = (3 / 4) * Math.PI;  // 120 stopni
+        const endAngle = (9 / 4) * Math.PI;    // 540 stopni
+
+        for (let i = 0; i <= numTicks; i++) {
+            const angle = startAngle + (endAngle - startAngle) * (i / numTicks);
+            const tickX = centerX + radius * 0.85 * Math.cos(angle);
+            const tickY = centerY + radius * 0.85 * Math.sin(angle);
+            const labelX = centerX + radius * 0.65 * Math.cos(angle);  // Zwiększony odstęp między podziałką a numerami
+            const labelY = centerY + radius * 0.65 * Math.sin(angle);  // Zwiększony odstęp
+
+            // Grube kreski co 1 Wh
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(centerX + radius * 0.75 * Math.cos(angle), centerY + radius * 0.75 * Math.sin(angle));
+            ctx.lineTo(tickX, tickY);
+            ctx.stroke();
+
+            // Wyświetlanie wartości na tarczy (0, 1, 2, ... 10 Wh)
+            ctx.fillStyle = 'white';
+            ctx.font = '20px Arial';
+            ctx.fillText(i.toFixed(0), labelX, labelY);
+        }
+
+        // Rysowanie pomniejszych podziałek co 0.5 jednostki
+        for (let i = 0; i < numTicks; i++) {
+            const angle = startAngle + (endAngle - startAngle) * ((i + 0.5) / numTicks);
+            const tickX = centerX + radius * 0.85 * Math.cos(angle);
+            const tickY = centerY + radius * 0.85 * Math.sin(angle);
+
+            // Cienkie kreski co 0.5 Wh
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(centerX + radius * 0.8 * Math.cos(angle), centerY + radius * 0.8 * Math.sin(angle));
+            ctx.lineTo(tickX, tickY);
+            ctx.stroke();
+        }
+
+        // Rysowanie igły (pomarańczowa)
+        const needleAngle = startAngle + (endAngle - startAngle) * (energySpeed / maxEnergy);
+        const needleX = centerX + radius * 0.75 * Math.cos(needleAngle);
+        const needleY = centerY + radius * 0.75 * Math.sin(needleAngle);
+
+        ctx.strokeStyle = 'orange';
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY);
+        ctx.lineTo(needleX, needleY);
+        ctx.stroke();
+
+        // Wyświetlanie skumulowanej energii na środku tarczy
+        ctx.fillStyle = 'white';
+        ctx.font = '40px Arial';
+        ctx.fillText(energyText, centerX, centerY + 100);
+
+        // Rysowanie licznika kilometrów (dla Wh)
+        ctx.fillStyle = 'white';
+        ctx.font = '20px Arial';
+        ctx.fillText(("000000" + energySpeed.toFixed(0)).slice(-6) + " Wh", centerX, centerY - 40);  // Wyświetl licznik Wh
+    }
+</script>
+</body>
+
+</html>
